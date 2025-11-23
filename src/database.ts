@@ -1,126 +1,147 @@
 // backend/src/database.ts
-import { Pool } from 'pg';
-import dotenv from 'dotenv';
+import sqlite3 from 'sqlite3';
+import path from 'path';
+import fs from 'fs';
 
-dotenv.config();
+const dbPath = path.join(__dirname, '../../database.db');
 
-// Configuración de PostgreSQL para Railway
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
-});
+console.log('📁 Database path:', dbPath);
 
-// Función para inicializar las tablas
-async function initializeDatabase() {
-  try {
-    // Tabla de usuarios
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        username VARCHAR(50) UNIQUE NOT NULL,
-        password VARCHAR(255) NOT NULL,
-        email VARCHAR(100) UNIQUE NOT NULL,
-        nombre VARCHAR(100) NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // Tabla de casos
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS cases (
-        id SERIAL PRIMARY KEY,
-        nombre VARCHAR(200) NOT NULL,
-        descripcion TEXT NOT NULL,
-        estado VARCHAR(20) NOT NULL CHECK(estado IN ('PENDIENTE', 'EN_PROCESO', 'COMPLETADO', 'ARCHIVADO')),
-        vencimiento DATE,
-        creado_por INTEGER NOT NULL,
-        asignado_a INTEGER,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (creado_por) REFERENCES users (id),
-        FOREIGN KEY (asignado_a) REFERENCES users (id)
-      )
-    `);
-
-    console.log('✅ Tablas creadas exitosamente');
-    await insertInitialData();
-  } catch (error) {
-    console.error('❌ Error inicializando base de datos:', error);
-  }
+// Eliminar base de datos existente si está corrupta (solo desarrollo)
+if (fs.existsSync(dbPath) && process.env.NODE_ENV !== 'production') {
+  console.log('🗑️ Removing existing database file...');
+  fs.unlinkSync(dbPath);
 }
 
-// Insertar datos iniciales
-async function insertInitialData() {
-  try {
-    // Insertar usuarios de prueba
-    const users = [
-      { username: 'abogado1', password: '123', email: 'abogado1@legal.com', nombre: 'Abogado Principal' },
-      { username: 'abogado2', password: '123', email: 'abogado2@legal.com', nombre: 'Abogado Secundario' },
-      { username: 'asistente', password: '123', email: 'asistente@legal.com', nombre: 'Asistente Legal' }
-    ];
-
-    for (const user of users) {
-      const result = await pool.query(
-        `INSERT INTO users (username, password, email, nombre) 
-         VALUES ($1, $2, $3, $4) 
-         ON CONFLICT (username) DO NOTHING`,
-        [user.username, user.password, user.email, user.nombre]
-      );
-      
-      if (result.rowCount && result.rowCount > 0) {
-        console.log(`✅ Usuario creado: ${user.username}`);
-      }
-    }
-
-    // Insertar casos de prueba
-    const cases = [
-      {
-        nombre: 'Caso Corporativo ABC',
-        descripcion: 'Fusión empresarial con due diligence',
-        estado: 'EN_PROCESO',
-        vencimiento: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        creado_por: 1,
-        asignado_a: 1
-      },
-      {
-        nombre: 'Litigio Laboral XYZ',
-        descripcion: 'Demanda por despido injustificado',
-        estado: 'PENDIENTE', 
-        vencimiento: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        creado_por: 1,
-        asignado_a: 3
-      }
-    ];
-
-    for (const caseItem of cases) {
-      const result = await pool.query(
-        `INSERT INTO cases (nombre, descripcion, estado, vencimiento, creado_por, asignado_a) 
-         VALUES ($1, $2, $3, $4, $5, $6) 
-         ON CONFLICT (nombre) DO NOTHING`,
-        [caseItem.nombre, caseItem.descripcion, caseItem.estado, caseItem.vencimiento, caseItem.creado_por, caseItem.asignado_a]
-      );
-      
-      if (result.rowCount && result.rowCount > 0) {
-        console.log(`✅ Caso creado: ${caseItem.nombre}`);
-      }
-    }
-
-  } catch (error) {
-    console.error('❌ Error insertando datos iniciales:', error);
+const db = new sqlite3.Database(dbPath, (err) => {
+  if (err) {
+    console.error('❌ Error conectando a SQLite:', err.message);
+  } else {
+    console.log('✅ Conectado a la base de datos SQLite.');
+    initializeDatabase();
   }
+});
+
+function initializeDatabase() {
+  // Tabla de usuarios
+  db.run(`CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE NOT NULL,
+    password TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    nombre TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`, (err) => {
+    if (err) {
+      console.error('❌ Error creando tabla users:', err.message);
+    } else {
+      console.log('✅ Tabla "users" lista.');
+      
+      // Insertar usuarios de prueba
+      const users = [
+        { username: 'abogado1', password: '123', email: 'abogado1@legal.com', nombre: 'Abogado Principal' },
+        { username: 'abogado2', password: '123', email: 'abogado2@legal.com', nombre: 'Abogado Secundario' },
+        { username: 'asistente', password: '123', email: 'asistente@legal.com', nombre: 'Asistente Legal' }
+      ];
+
+      users.forEach(user => {
+        db.run(
+          `INSERT OR IGNORE INTO users (username, password, email, nombre) VALUES (?, ?, ?, ?)`,
+          [user.username, user.password, user.email, user.nombre],
+          function(err) {
+            if (err) {
+              console.error('❌ Error insertando usuario:', err.message);
+            } else if (this.changes > 0) {
+              console.log(`✅ Usuario creado: ${user.username}`);
+            }
+          }
+        );
+      });
+    }
+  });
+
+  // Tabla de casos
+  db.run(`CREATE TABLE IF NOT EXISTS cases (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre TEXT NOT NULL,
+    descripcion TEXT NOT NULL,
+    estado TEXT NOT NULL CHECK(estado IN ('PENDIENTE', 'EN_PROCESO', 'COMPLETADO', 'ARCHIVADO')),
+    vencimiento DATE,
+    creado_por INTEGER NOT NULL,
+    asignado_a INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (creado_por) REFERENCES users (id),
+    FOREIGN KEY (asignado_a) REFERENCES users (id)
+  )`, (err) => {
+    if (err) {
+      console.error('❌ Error creando tabla cases:', err.message);
+    } else {
+      console.log('✅ Tabla "cases" lista.');
+      
+      // Insertar casos de prueba después de un delay
+      setTimeout(() => {
+        const cases = [
+          {
+            nombre: 'Caso Corporativo ABC',
+            descripcion: 'Fusión empresarial con due diligence',
+            estado: 'EN_PROCESO',
+            vencimiento: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            creado_por: 1,
+            asignado_a: 1
+          },
+          {
+            nombre: 'Litigio Laboral XYZ',
+            descripcion: 'Demanda por despido injustificado',
+            estado: 'PENDIENTE', 
+            vencimiento: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            creado_por: 1,
+            asignado_a: 3
+          }
+        ];
+
+        cases.forEach(caseItem => {
+          db.run(
+            `INSERT OR IGNORE INTO cases (nombre, descripcion, estado, vencimiento, creado_por, asignado_a) VALUES (?, ?, ?, ?, ?, ?)`,
+            [caseItem.nombre, caseItem.descripcion, caseItem.estado, caseItem.vencimiento, caseItem.creado_por, caseItem.asignado_a],
+            function(err) {
+              if (err) {
+                console.error('❌ Error insertando caso:', err.message);
+              } else if (this.changes > 0) {
+                console.log(`✅ Caso creado: ${caseItem.nombre}`);
+              }
+            }
+          );
+        });
+      }, 1000);
+    }
+  });
 }
 
 // Función para hacer consultas
 export const dbQuery = (sql: string, params: any[] = []): Promise<any> => {
-  return pool.query(sql, params);
+  return new Promise((resolve, reject) => {
+    db.all(sql, params, (err, rows) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(rows);
+      }
+    });
+  });
 };
 
 // Función para ejecutar INSERT, UPDATE, DELETE
 export const dbRun = (sql: string, params: any[] = []): Promise<any> => {
-  return pool.query(sql, params);
+  return new Promise((resolve, reject) => {
+    db.run(sql, params, function(err) {
+      if (err) {
+        reject(err);
+      } else {
+        resolve({ id: this.lastID, changes: this.changes });
+      }
+    });
+  });
 };
 
-// Inicializar la base de datos al importar
-initializeDatabase();
-
-export default pool;
+export default db;

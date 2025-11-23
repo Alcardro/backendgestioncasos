@@ -100,9 +100,11 @@ const login = async (req, res) => {
     }
     catch (error) {
         console.error('❌ Error en login:', error);
+        // Manejo seguro del error sin problemas de tipo
+        const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
         res.status(500).json({
             error: 'Error interno del servidor',
-            details: process.env.NODE_ENV === 'development' ? error.message : undefined
+            details: process.env.NODE_ENV === 'development' ? errorMessage : undefined
         });
     }
 };

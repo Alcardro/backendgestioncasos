@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 
-import './database';
+//import './database';
 import authRoutes from './routes/authRoutes';
 import caseRoutes from './routes/caseRoutes';
 
@@ -26,6 +26,7 @@ const PORT = getPort();
 
 // CORS para producción - REEMPLAZA con tu URL real de Vercel
 const allowedOrigins = [
+  'http://localhost:3000',
   'https://tu-frontend.vercel.app' // ← CAMBIA por tu URL real
 ];
 
