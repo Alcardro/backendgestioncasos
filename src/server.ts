@@ -31,16 +31,7 @@ const allowedOrigins = [
 ];
 
 app.use(cors({
-  origin: (origin, callback) => {
-    // Permitir requests sin origin (como mobile apps o curl)
-    if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+  origin: 'https://gestion-casos.vercel.app',
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
 }));
