@@ -27,7 +27,7 @@ const PORT = getPort();
 // CORS para producción - REEMPLAZA con tu URL real de Vercel
 const allowedOrigins = [
   'http://localhost:3000',
-  'https://tu-frontend.vercel.app' // ← CAMBIA por tu URL real
+  'https://gestion-casos.vercel.app/login' // ← CAMBIA por tu URL real
 ];
 
 app.use(cors({
